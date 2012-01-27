@@ -17,6 +17,7 @@ private:
     MatrixXd* mpfCovVectors;
     MatrixXd* mpfInvCovVectors;
     float getLikelihood(int inputId,int modelId);
+    float* normSumK;
 public:
     GMM();
     GMM(int dimension,int k);
@@ -25,6 +26,8 @@ public:
     void clear();
     void iterateGMM(int numIter);
     float getLikelihood(float* inputVec);
+    float getLikelihood2(float* inputVec);
     void printModels();
+    void initLastMean();
 };
 #endif

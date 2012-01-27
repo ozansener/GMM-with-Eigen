@@ -39,6 +39,7 @@ GMM::GMM(int dimension,int k){
         mpfCovVectors[i].resize(mnDimension,mnDimension);
         mpfInvCovVectors[i].resize(mnDimension,mnDimension);
     }
+    normSumK = new float[mnK];
     mnNumOfInputs=0;
     mpfInputData.clear();
     }
@@ -58,6 +59,7 @@ bool GMM::initializeAndClear(int dimension,int k){
         }
     mnDimension=dimension;
     mnK=k;
+        normSumK = new float[mnK];
     mpbIsModelValid = new bool[mnK];
     mpfDeterminants=new float[mnK];
     mpfMeanVector=new float[mnK*mnDimension];
@@ -83,6 +85,7 @@ void GMM::clear(){
     mbIsFirstRun = true;
     }
 
+
 float GMM::getLikelihood(int inputId,int modelId){
     float mulSum;
     float logLL;
@@ -107,7 +110,7 @@ float GMM::getLikelihood(int inputId,int modelId){
 
 
     }
-float GMM::getLikelihood(float* inputVec){
+float GMM::getLikelihood2(float* inputVec){
 
     float mulSum;
     float logLL;
@@ -140,9 +143,93 @@ float GMM::getLikelihood(float* inputVec){
 
     }
 
+float GMM::getLikelihood(float* inputVec){
+  //  float a=0;
+ //   for(int i=0;i<mnK;i++)
+ //       a+=normSumK[i];
+//    cout<<"AAAA"<<a<<endl;
+    float mulSum;
+    float logLL;
+    float maxLL;
+    maxLL = -100000;
+    int b=0;
+    for(int j=0;j<mnK;j++)
+    {
+        if(!mpbIsModelValid[j])
+            continue;
+        logLL = pow(mpfDeterminants[j],0.5);
+        logLL *= pow(2*PI,mnDimension*0.5);
+        logLL = 1/logLL;
+        mulSum = 0;
+        for(int a=0;a<mnDimension;a++)
+            for(int b=0;b<mnDimension;b++)
+                mulSum += (inputVec[a]-mpfMeanVector[mnDimension*j+a])*(inputVec[b]-mpfMeanVector[mnDimension*j+b])*mpfInvCovVectors[j](a,b);
+
+        logLL *= exp((-0.5)*mulSum);
+        logLL *= normSumK[j];
+        if(logLL>maxLL)
+            maxLL=logLL;
+
+
+    }
+    if(maxLL<0)
+        maxLL = 0;
+
+    return maxLL;
+
+
+    }
+
+void GMM::initLastMean(){
+    if(!mbIsFirstRun)
+        return;
+    mbIsFirstRun=false;
+    //Initialize all models again
+    for(int i=0;i<mnK;i++)
+        mpbIsModelValid[i]=true;
+
+    mpfWeights.resize((mpfInputData.size()/mnDimension)*mnK);
+    // Expectation
+    for(int k=0;k<mnK;k++){
+        if(!mpbIsModelValid)
+            continue;
+        for(int l=0;l<mnDimension;l++)
+            mpfCovVectors[k](l,l)=mpfCovVectors[k](l,l)+pow(10,-6);
+        //cout<<"Covariance"<<k<<endl<<mpfCovVectors[k]<<endl;
+        mpfDeterminants[k]=mpfCovVectors[k].determinant();
+        mpfInvCovVectors[k]=mpfCovVectors[k].inverse();
+        for(int j=0;j<((int)mpfInputData.size())/mnDimension;j++){
+            mpfWeights[j*mnK+k]=getLikelihood(j,k);
+            if(isnan(mpfWeights[j*mnK+k]))
+                mpfWeights[j*mnK+k] = 0;
+        }
+    }
+
+    int normSum;
+    ///////////////////////////////////
+    //Normalize weights
+    for(int j=0;j<(((int)mpfInputData.size())/mnDimension);j++)
+    {
+        normSum = 0;
+        for(int k=0;k<mnK;k++)
+            normSum+=mpfWeights[j*mnK+k];
+        if(normSum!=0)
+        {
+            for(int k=0;k<mnK;k++)
+                mpfWeights[j*mnK+k]=mpfWeights[j*mnK+k]/normSum;
+        }
+    }
+
+
+
+
+
+}
+
+
 void GMM::iterateGMM(int numIter){
     float normSum;
-    srand(time(NULL));
+   // srand(time(NULL));
     if(mbIsFirstRun){
         //Allocate vectors
         mpfWeights.resize((mpfInputData.size()/mnDimension)*mnK);
@@ -190,7 +277,6 @@ void GMM::iterateGMM(int numIter){
             }
         }
 
-        float* normSumK = new float[mnK];
         for(int i=0;i<numIter;i++){
             //Clear containers
             for(int j=0;j<mnK;j++){
@@ -254,6 +340,14 @@ void GMM::iterateGMM(int numIter){
                         mpfCovVectors[k](l,l)=mpfCovVectors[k](l,l)+pow(10,-6);
                 //cout<<"Covariance"<<k<<endl<<mpfCovVectors[k]<<endl;
                 mpfDeterminants[k]=mpfCovVectors[k].determinant();
+                /*
+                for(int nI=0;nI<mnDimension;nI++)
+                    for(int nJ=0;nJ<mnDimension;nJ++)
+                        if(nI==nJ)
+                            mpfInvCovVectors[k](nI,nJ)=1/mpfCovVectors[k](nI,nJ);
+                        else
+                            mpfInvCovVectors[k](nI,nJ)=0;
+*/
                 mpfInvCovVectors[k]=mpfCovVectors[k].inverse();
                 //cout<<"Inv Covariance"<<k<<endl<<mpfInvCovVectors[k]<<endl;
                 //cout<<mpfMeanVector[k*mnDimension+0]<<" "<<mpfMeanVector[k*mnDimension+1]<<" "<<mpfMeanVector[k*mnDimension+2]<<" "<<mpfMeanVector[k*mnDimension+3]<<endl;
@@ -264,8 +358,13 @@ void GMM::iterateGMM(int numIter){
                 }
                 }
         }
-        delete [] normSumK;
-    }
+
+        float a;
+        for(int i=0;i<mnK;i++)
+            a+=normSumK[i];
+        for(int i=0;i<mnK;i++)
+            normSumK[i]=normSumK[i]/a;
+}
 
 void GMM::printModels(){
     for(int k=0;k<mnK;k++){
