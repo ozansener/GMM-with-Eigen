@@ -18,7 +18,8 @@ int main()
       inFile>>otVec[3];
       g.insertData(otVec,1);
       }
-
+ 
     g.iterateGMM(70);
     g.printModels();
+    //That's it :)
 }
